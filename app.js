@@ -11,7 +11,7 @@ const SPOTIFY_CLIENT_ID = process.env.SPOTIFY_CLIENT_ID;
 const SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET;
 const REDIRECT_URI = process.env.REDIRECT_URI;
 const SLACK_BOT_TOKEN = process.env.SLACK_BOT_TOKEN;
-const SPOTIFY_REFRESH_TOKEN = process.env.SPOTIFY_REFRESH_TOKEN;
+let SPOTIFY_REFRESH_TOKEN = process.env.SPOTIFY_REFRESH_TOKEN; // Puede actualizarse dinámicamente
 
 let spotifyAccessToken = '';
 let slackClient = new WebClient(SLACK_BOT_TOKEN);
@@ -32,13 +32,17 @@ async function refreshSpotifyToken() {
     spotifyAccessToken = response.data.access_token;
     console.log('Nuevo token de acceso obtenido:', spotifyAccessToken);
   } catch (error) {
-    console.error('Error al refrescar el token de acceso:', error.response?.data || error.message);
+    const errorData = error.response?.data || error.message;
+    console.error('Error al refrescar el token de acceso:', errorData);
+
+    if (errorData.error === 'invalid_grant') {
+      console.error('El refresh token es inválido o expiró. Regenera uno nuevo desde /login.');
+    }
   }
 }
 
 async function updateSlackStatus() {
   try {
-    // Refrescar el token si es necesario
     if (!spotifyAccessToken) {
       console.log('Token vencido o no disponible. Intentando refrescar...');
       await refreshSpotifyToken();
@@ -76,7 +80,7 @@ async function updateSlackStatus() {
   }
 }
 
-setInterval(refreshSpotifyToken, 3500000); // Refresca el token cada 58 minutos (antes de que caduque).
+setInterval(refreshSpotifyToken, 3500000); // Refresca el token cada 58 minutos.
 setInterval(updateSlackStatus, 60000); // Actualiza el estado cada 60 segundos.
 
 app.get('/login', (req, res) => {
@@ -112,7 +116,15 @@ app.get('/callback', async (req, res) => {
     );
 
     spotifyAccessToken = response.data.access_token;
-    console.log('Token de acceso obtenido:', spotifyAccessToken);
+    SPOTIFY_REFRESH_TOKEN = response.data.refresh_token; // Actualizar el refresh token dinámicamente
+    console.log('Nuevo refresh token obtenido:', SPOTIFY_REFRESH_TOKEN);
+
+    // Actualizar el archivo .env dinámicamente (opcional)
+    const fs = require('fs');
+    fs.writeFileSync(
+      '.env',
+      `SPOTIFY_CLIENT_ID=${SPOTIFY_CLIENT_ID}\nSPOTIFY_CLIENT_SECRET=${SPOTIFY_CLIENT_SECRET}\nREDIRECT_URI=${REDIRECT_URI}\nSLACK_BOT_TOKEN=${SLACK_BOT_TOKEN}\nSPOTIFY_REFRESH_TOKEN=${SPOTIFY_REFRESH_TOKEN}\n`
+    );
 
     await updateSlackStatus();
 
